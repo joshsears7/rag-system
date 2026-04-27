@@ -1,0 +1,14 @@
+[
+  {
+    "question": "What is Retrieval-Augmented Generation (RAG)?",
+    "expected_answer": "RAG is a technique that combines information retrieval with language model generation. Instead of relying solely on a model's parametric knowledge, RAG retrieves relevant documents from an external knowledge base and uses them as context for generating answers.",
+    "relevant_sources": [],
+    "collection": "default"
+  },
+  {
+    "question": "What chunking strategies are available in this RAG system?",
+    "expected_answer": "The system supports three chunking strategies: recursive character splitting (default), semantic chunking based on embedding similarity, and hierarchical parent-child chunking for multi-granularity retrieval.",
+    "relevant_sources": [],
+    "collection": "default"
+  }
+]

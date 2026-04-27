@@ -1,0 +1,37 @@
+# Core RAG
+chromadb==0.5.23
+sentence-transformers==3.3.1
+rank-bm25==0.2.2
+langchain-community==0.3.8
+langchain-text-splitters==0.3.2
+
+# LLM backends
+anthropic==0.40.0
+openai==1.57.0
+requests==2.32.3
+
+# Web scraping
+beautifulsoup4==4.12.3
+
+# API & config
+fastapi==0.115.6
+pydantic==2.10.3
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# Reranking
+torch==2.4.1
+transformers==4.46.3
+
+# Knowledge graph
+networkx==3.4.2
+
+# Streamlit UI
+streamlit==1.40.0
+
+# Document loaders
+pypdf==5.1.0
+docx2txt==0.8
+
+# SQL
+sqlalchemy==2.0.36

@@ -1,0 +1,77 @@
+# ── Core RAG ──────────────────────────────────────────────────────────────────
+chromadb==0.5.23
+sentence-transformers==3.3.1
+rank-bm25==0.2.2
+
+# ── LLM Backends ──────────────────────────────────────────────────────────────
+anthropic==0.84.0
+openai==1.57.0
+requests==2.32.3
+
+# ── Document Loading ──────────────────────────────────────────────────────────
+langchain-community==0.3.12
+langchain-text-splitters==0.3.3
+pypdf==5.1.0
+docx2txt==0.8
+beautifulsoup4==4.12.3
+unstructured==0.16.10
+
+# ── Knowledge Graph ───────────────────────────────────────────────────────────
+networkx==3.4.2
+
+# ── API ───────────────────────────────────────────────────────────────────────
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.7.0
+httpx==0.28.1
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+typer==0.15.1
+rich==13.9.4
+
+# ── Config ────────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1
+
+# ── Numerics ──────────────────────────────────────────────────────────────────
+numpy==1.26.4
+
+# ── Monitoring (optional) ─────────────────────────────────────────────────────
+prometheus-client==0.21.1
+
+# ── Observability ─────────────────────────────────────────────────────────────
+langfuse==2.36.1            # semantic RAG tracing (LANGFUSE_PUBLIC_KEY + SECRET_KEY in .env)
+
+# ── Web search fallback ────────────────────────────────────────────────────────
+tavily-python==0.3.9        # RAG-optimized web search (TAVILY_API_KEY in .env)
+duckduckgo-search==6.3.7    # no-key fallback web search
+
+# ── Structured data / SQL ─────────────────────────────────────────────────────
+sqlalchemy==2.0.36          # text-to-SQL and database connectivity
+
+# ── Security (optional ML-based PII) ─────────────────────────────────────────
+# presidio-analyzer==2.2.355    # ML PII detection (pip install separately — large model download)
+# presidio-anonymizer==2.2.355  # PII redaction
+
+# ── Multi-modal (optional) ────────────────────────────────────────────────────
+pdfplumber==0.11.4          # table extraction from PDFs
+pymupdf==1.24.14            # image extraction from PDFs (import as fitz)
+pytesseract==0.3.13         # OCR fallback (requires: brew install tesseract)
+pillow==11.0.0              # image handling
+
+# ── Embedding fine-tuning (optional) ──────────────────────────────────────────
+# sentence-transformers[train] already includes torch; install separately if needed:
+# pip install sentence-transformers[train]
+
+# ── Clustering / RAPTOR (optional) ───────────────────────────────────────────
+scikit-learn==1.6.0         # KMeans for RAPTOR clustering
+umap-learn==0.5.7           # UMAP dimensionality reduction for RAPTOR
+
+# ── Demo UI ───────────────────────────────────────────────────────────────────
+streamlit==1.40.0           # interactive demo with retrieval visualization (streamlit run demo.py)
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+pyflakes==3.2.0             # CI lint check
