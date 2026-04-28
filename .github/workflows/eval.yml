@@ -104,8 +104,8 @@ jobs:
 
       - name: Run unit tests
         env:
-          LLM_BACKEND: ollama
-          ANTHROPIC_API_KEY: ""
+          LLM_BACKEND: claude
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ""
         run: |
           python3 -m pytest tests/ \
@@ -159,14 +159,6 @@ jobs:
             numpy==1.26.4 \
             networkx==3.4.2 \
             requests==2.32.3
-
-      - name: Set up Ollama
-        uses: nicholasgasior/setup-ollama@v1
-        continue-on-error: true  # Ollama setup may fail on some runners
-
-      - name: Pull Ollama model
-        run: ollama pull llama3.2 || echo "Ollama not available — will skip LLM-dependent metrics"
-        continue-on-error: true
 
       - name: Ingest evaluation corpus
         run: |
