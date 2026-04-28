@@ -1,6 +1,6 @@
 # RAG System
 
-[![CI](https://github.com/joshuasears/rag_system/actions/workflows/eval.yml/badge.svg)](https://github.com/joshuasears/rag_system/actions/workflows/eval.yml)
+[![CI](https://github.com/joshsears7/rag-system/actions/workflows/eval.yml/badge.svg)](https://github.com/joshsears7/rag-system/actions/workflows/eval.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -277,6 +277,8 @@ Results on the built-in synthetic eval corpus (5 questions, 3 documents, Claude 
 | **Full stack (hybrid+rerank+HyDE)** | **1.00** | **0.56** | 11,684ms |
 
 HyDE achieves perfect source recall at the cost of ~4.6× latency. For latency-sensitive applications, hybrid+reranking hits 0.80 recall at 3.5s — a reasonable tradeoff. Run against your own corpus for faithfulness scores representative of your domain.
+
+> **CI eval gate** requires an `ANTHROPIC_API_KEY` secret configured in GitHub Actions — see `.github/workflows/eval.yml`. Lint and unit tests run without it.
 
 ```bash
 # Run full benchmark (naive → hybrid → hybrid+rerank → full stack)
