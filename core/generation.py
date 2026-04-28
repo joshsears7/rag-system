@@ -150,7 +150,7 @@ class ClaudeBackend:
                 model=self.model,
                 max_tokens=settings.max_tokens,
                 temperature=settings.temperature,
-                system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
+                system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
             )
             text = msg.content[0].text if msg.content else ""
