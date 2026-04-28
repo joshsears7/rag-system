@@ -48,8 +48,10 @@ def recall_at_k(retrieved_sources: list[str], relevant_sources: list[str]) -> fl
     """
     if not relevant_sources:
         return 1.0  # no ground truth = can't penalise
-    retrieved_set = {s.lower() for s in retrieved_sources}
-    relevant_set = {s.lower() for s in relevant_sources}
+    # Normalize to basename so full paths match bare filenames
+    import os
+    retrieved_set = {os.path.basename(s).lower() for s in retrieved_sources}
+    relevant_set = {os.path.basename(s).lower() for s in relevant_sources}
     hits = len(relevant_set & retrieved_set)
     return hits / len(relevant_set)
 

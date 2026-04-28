@@ -154,11 +154,11 @@ def setup_eval_corpus() -> None:
 
             try:
                 result = ingest_document(
-                    file_path=str(filepath),
-                    collection="eval_test",
+                    source=str(filepath),
+                    collection_name="eval_test",
                     overwrite=True,
                 )
-                print(f"  Ingested {doc['filename']}: {result.chunks_stored} chunks")
+                print(f"  Ingested {doc['filename']}: {result.chunks_added} chunks")
             except Exception as e:
                 print(f"  Failed to ingest {doc['filename']}: {e}")
 

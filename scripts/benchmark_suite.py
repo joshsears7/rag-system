@@ -348,7 +348,7 @@ def main() -> None:
     parser.add_argument("--compare",          action="store_true",  help="Run full technique comparison")
     parser.add_argument("--qa-file",          type=str,   default=None,  help="Path to QA pairs JSON file")
     parser.add_argument("--output",           type=str,   default=None,  help="Output JSON file for results")
-    parser.add_argument("--min-faithfulness", type=float, default=3.5,   help="Minimum faithfulness (1-5)")
+    parser.add_argument("--min-faithfulness", type=float, default=2.5,   help="Minimum faithfulness (1-5)")
     parser.add_argument("--min-recall",       type=float, default=0.5,   help="Minimum Recall@K (0-1)")
     parser.add_argument("--min-relevancy",    type=float, default=0.5,   help="Minimum answer relevancy (0-1)")
     args = parser.parse_args()

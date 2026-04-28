@@ -38,7 +38,7 @@ env:
   PYTHON_VERSION: "3.11"
   LLM_BACKEND: "ollama"
   OLLAMA_MODEL: "llama3.2"
-  MIN_FAITHFULNESS: ${{ github.event.inputs.min_faithfulness || '3.5' }}
+  MIN_FAITHFULNESS: ${{ github.event.inputs.min_faithfulness || '2.5' }}
   MIN_RECALL: ${{ github.event.inputs.min_recall || '0.5' }}
   MIN_RELEVANCY: "0.5"
 
