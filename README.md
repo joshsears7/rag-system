@@ -1,3 +1,15 @@
+---
+title: RAG System Demo
+emoji: 🔍
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_file: hf_space/app.py
+pinned: false
+license: mit
+short_description: Production RAG — 20+ techniques from 2022-2025 research
+---
+
 # RAG System
 
 [![CI](https://github.com/joshsears7/rag-system/actions/workflows/eval.yml/badge.svg)](https://github.com/joshsears7/rag-system/actions/workflows/eval.yml)
