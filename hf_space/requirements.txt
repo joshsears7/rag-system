@@ -2,36 +2,45 @@
 chromadb==0.5.23
 sentence-transformers==3.3.1
 rank-bm25==0.2.2
-langchain-community==0.3.8
-langchain-text-splitters==0.3.2
 
 # LLM backends
-anthropic==0.40.0
+anthropic==0.84.0
 openai==1.57.0
 requests==2.32.3
 
-# Web scraping
+# Document loading
+langchain-community==0.3.12
+langchain-text-splitters==0.3.3
+pypdf==5.1.0
+docx2txt==0.8
 beautifulsoup4==4.12.3
-
-# API & config
-fastapi==0.115.6
-pydantic==2.10.3
-pydantic-settings==2.6.1
-python-dotenv==1.0.1
-
-# Reranking
-torch==2.4.1
-transformers==4.46.3
 
 # Knowledge graph
 networkx==3.4.2
 
+# Config & models
+pydantic==2.10.3
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+
+# Numerics
+numpy==1.26.4
+
+# Web search fallback (no-key)
+duckduckgo-search==6.3.7
+
+# SQL (optional - text-to-SQL mode)
+sqlalchemy==2.0.36
+
+# PDF tables (multimodal mode)
+pdfplumber==0.11.4
+pillow==11.0.0
+
+# Clustering (RAPTOR)
+scikit-learn==1.6.0
+
+# Monitoring
+prometheus-client==0.21.1
+
 # Streamlit UI
 streamlit==1.40.0
-
-# Document loaders
-pypdf==5.1.0
-docx2txt==0.8
-
-# SQL
-sqlalchemy==2.0.36
