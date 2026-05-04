@@ -193,13 +193,14 @@ with st.sidebar:
     st.subheader("Query Mode")
     mode = st.radio(
         "Mode",
-        options=["Hybrid RAG", "CoT-RAG", "TTRAG", "Speculative RAG", "Agentic RAG", "Compare All"],
+        options=["Hybrid RAG", "CoT-RAG", "TTRAG", "Speculative RAG", "A-RAG", "Agentic RAG", "Compare All"],
         index=0,
         help=(
             "**Hybrid RAG:** Dense+BM25+RRF with cross-encoder reranking\n\n"
             "**CoT-RAG:** Chain-of-thought multi-hop reasoning\n\n"
             "**TTRAG:** Test-time compute scaling — iterative query rewriting until sufficient context found (ICLR 2025)\n\n"
             "**Speculative RAG:** Generates N independent draft answers from document subsets, selects best by confidence — ~51% latency reduction (Google 2024)\n\n"
+            "**A-RAG:** Agent picks retrieval interface per step (keyword/semantic/hybrid/section) — hierarchical retrieval interfaces (Feb 2026)\n\n"
             "**Agentic RAG:** Claude tool-use with search_docs, search_web, query_sql, calculate\n\n"
             "**Compare All:** Run all modes and show side-by-side"
         ),
@@ -509,6 +510,69 @@ if run_btn and question.strip():
 
             except Exception as e:
                 st.error(f"Speculative RAG failed: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+
+    elif mode == "A-RAG":
+        # ── A-RAG mode ────────────────────────────────────────────────────────
+        st.subheader("A-RAG — Hierarchical Retrieval Interfaces (Feb 2026)")
+
+        max_steps = st.sidebar.slider("Max steps", 1, 10, 5)
+
+        with st.spinner("Agent selecting retrieval interfaces…"):
+            try:
+                from core.arag import run_arag, RETRIEVAL_TOOLS
+                from core.retrieval import retrieve
+                from core.generation import get_backend
+
+                backend = get_backend()
+
+                arag_result = run_arag(
+                    question=question,
+                    collection=collection,
+                    retrieve_fn=retrieve,
+                    llm_raw_fn=backend.complete_raw,
+                    llm_complete_fn=backend.complete,
+                    max_steps=max_steps,
+                    top_k_per_step=top_k,
+                )
+
+                # Step trace
+                if arag_result.steps:
+                    with st.expander(f"Retrieval Interface Decisions — {arag_result.num_steps} steps", expanded=True):
+                        for s in arag_result.steps:
+                            tool_color = {
+                                "keyword_search": "#f9e2af",
+                                "semantic_search": "#89b4fa",
+                                "hybrid_search": "#cba6f7",
+                                "read_section": "#a6e3a1",
+                            }.get(s.tool_chosen, "#cdd6f4")
+                            st.markdown(f"""
+                            <div class="step-card">
+                                <div class="step-number">Step {s.step}</div>
+                                <div style="margin:4px 0">
+                                    <span style="background:{tool_color}; color:#1e1e2e; padding:2px 8px; border-radius:4px; font-size:0.8em; font-weight:bold">{s.tool_chosen}</span>
+                                    &nbsp; <code style="font-size:0.85em">{s.query}</code>
+                                </div>
+                                <div style="color:#a6adc8; font-size:0.83em">
+                                    {len(s.retrieved)} new chunks &nbsp;|&nbsp; {s.latency_ms:.0f}ms
+                                    {f" &nbsp;|&nbsp; {s.reasoning[:80]}" if s.reasoning else ""}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                st.markdown("### Answer")
+                st.markdown(arag_result.answer)
+
+                tools_str = " → ".join(dict.fromkeys(arag_result.tools_used)) or "none"
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Steps", arag_result.num_steps)
+                m2.metric("Unique chunks", arag_result.unique_chunks)
+                m3.metric("Tool sequence", tools_str)
+                m4.metric("Latency", f"{arag_result.latency_ms:.0f}ms")
+
+            except Exception as e:
+                st.error(f"A-RAG failed: {e}")
                 import traceback
                 st.code(traceback.format_exc())
 

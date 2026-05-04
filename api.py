@@ -1455,6 +1455,87 @@ async def query_speculative(request: SpeculativeRAGRequest) -> SpeculativeRAGRes
     )
 
 
+# ── A-RAG (Feb 2026) ─────────────────────────────────────────────────────────
+
+
+class ARAGRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    collection: str = Field(default="default")
+    max_steps: int = Field(default=5, ge=1, le=10)
+    top_k_per_step: int = Field(default=4, ge=1, le=10)
+
+
+class ARAGStepResponse(BaseModel):
+    step: int
+    tool_chosen: str
+    query: str
+    reasoning: str
+    new_chunks_retrieved: int
+    latency_ms: float
+
+
+class ARAGResponse(BaseModel):
+    question: str
+    answer: str
+    steps: list[ARAGStepResponse]
+    num_steps: int
+    unique_chunks: int
+    tools_used: list[str]
+    tokens_used: int
+    latency_ms: float
+
+
+@app.post("/query/arag", response_model=ARAGResponse, tags=["Query"])
+async def query_arag(request: ARAGRequest) -> ARAGResponse:
+    """
+    A-RAG — Hierarchical Retrieval Interfaces (Feb 2026).
+
+    The agent dynamically selects the retrieval interface at each step:
+    keyword_search (BM25), semantic_search (dense), hybrid_search, or
+    read_section (fetch from a specific source). Most cutting-edge agentic
+    RAG pattern — treats retrieval as a decision, not a fixed pipeline.
+    """
+    from core.arag import run_arag
+    from core.retrieval import retrieve
+    from core.generation import get_backend
+
+    backend = get_backend()
+
+    try:
+        result = run_arag(
+            question=request.question,
+            collection=request.collection,
+            retrieve_fn=retrieve,
+            llm_raw_fn=backend.complete_raw,
+            llm_complete_fn=backend.complete,
+            max_steps=request.max_steps,
+            top_k_per_step=request.top_k_per_step,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return ARAGResponse(
+        question=result.question,
+        answer=result.answer,
+        steps=[
+            ARAGStepResponse(
+                step=s.step,
+                tool_chosen=s.tool_chosen,
+                query=s.query,
+                reasoning=s.reasoning,
+                new_chunks_retrieved=len(s.retrieved),
+                latency_ms=s.latency_ms,
+            )
+            for s in result.steps
+        ],
+        num_steps=result.num_steps,
+        unique_chunks=result.unique_chunks,
+        tools_used=result.tools_used,
+        tokens_used=result.tokens_used,
+        latency_ms=result.latency_ms,
+    )
+
+
 # ── LightRAG (EMNLP 2025) ─────────────────────────────────────────────────────
 
 

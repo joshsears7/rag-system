@@ -1447,6 +1447,89 @@ def speculative_rag(
     ))
 
 
+# ── a-rag ─────────────────────────────────────────────────────────────────────
+
+
+@app.command(name="arag")
+def a_rag(
+    question: Annotated[str, typer.Option("--question", "-q")],
+    collection: Annotated[str, typer.Option("--collection", "-c")] = settings.default_collection,
+    max_steps: Annotated[int, typer.Option("--max-steps")] = 5,
+    top_k: Annotated[int, typer.Option("--top-k", "-k")] = 4,
+    show_steps: Annotated[bool, typer.Option("--show-steps")] = True,
+) -> None:
+    """
+    [bold]A-RAG[/bold] — Hierarchical Retrieval Interfaces (Feb 2026).
+
+    Agent dynamically picks the retrieval interface per step:
+    keyword search, semantic search, hybrid, or section read.
+    Most cutting-edge agentic RAG pattern — retrieval as a decision, not a pipeline.
+    """
+    from core.arag import run_arag
+    from core.retrieval import retrieve
+    from core.generation import get_backend
+
+    _print_header("A-RAG — Hierarchical Retrieval Interfaces")
+    console.print(f"\n[bold]Question:[/bold] {question}\n")
+
+    backend = get_backend()
+
+    with Progress(SpinnerColumn(), TextColumn("{task.description}"), TimeElapsedColumn(), console=console) as prog:
+        task = prog.add_task("Agent selecting retrieval interfaces…", total=None)
+        try:
+            result = run_arag(
+                question=question,
+                collection=collection,
+                retrieve_fn=retrieve,
+                llm_raw_fn=backend.complete_raw,
+                llm_complete_fn=backend.complete,
+                max_steps=max_steps,
+                top_k_per_step=top_k,
+            )
+        except Exception as e:
+            console.print(f"\n[red]A-RAG failed: {e}[/red]")
+            raise typer.Exit(1) from e
+        prog.update(task, completed=True)
+
+    if show_steps and result.steps:
+        step_table = Table(
+            title=f"Retrieval Interface Decisions ({result.num_steps} steps)",
+            header_style="bold cyan",
+            show_lines=True,
+        )
+        step_table.add_column("#", width=4, style="dim")
+        step_table.add_column("Tool", width=16, style="cyan")
+        step_table.add_column("Query", max_width=35)
+        step_table.add_column("New chunks", justify="right", width=11)
+        step_table.add_column("Reasoning", max_width=35, style="dim")
+        step_table.add_column("ms", justify="right", width=7)
+
+        for s in result.steps:
+            step_table.add_row(
+                str(s.step),
+                s.tool_chosen,
+                s.query[:35],
+                str(len(s.retrieved)),
+                s.reasoning[:35],
+                f"{s.latency_ms:.0f}",
+            )
+        console.print(step_table)
+
+    tools_summary = ", ".join(dict.fromkeys(result.tools_used))
+    console.print(Panel(
+        result.answer,
+        title=(
+            f"[bold cyan]A-RAG Answer[/bold cyan]  [dim]·[/dim]  "
+            f"{result.num_steps} steps  [dim]·[/dim]  "
+            f"{result.unique_chunks} chunks  [dim]·[/dim]  "
+            f"tools: {tools_summary}  [dim]·[/dim]  "
+            f"{result.latency_ms:.0f}ms"
+        ),
+        border_style="cyan",
+        padding=(1, 2),
+    ))
+
+
 # ── lightrag ──────────────────────────────────────────────────────────────────
 
 
