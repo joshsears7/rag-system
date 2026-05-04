@@ -62,6 +62,7 @@ Each technique is listed with the paper that introduced it, what it fixes, and t
 | **Adaptive RAG** | Jeong et al. (2024) | Over-retrieval on simple questions | +100ms |
 | **Self-RAG** | Asai et al. (2023) | No reflection on retrieval quality | +200ms |
 | **CoT-RAG** | EMNLP 2025 | Single-hop failures on multi-hop questions | +1–3s |
+| **TTRAG** | ICLR 2025 | One-shot retrieval misses — iterative query rewriting until sufficient context found | +1–4s/iter |
 | **RAPTOR** | Sarthi et al. (2024) | Long document comprehension failures | +ingest time |
 
 ### Knowledge Graphs

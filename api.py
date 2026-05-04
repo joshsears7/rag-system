@@ -1282,6 +1282,99 @@ async def query_cot(request: CoTRequest) -> CoTResponse:
     )
 
 
+# ── TTRAG (ICLR 2025) ─────────────────────────────────────────────────────────
+
+
+class TTRAGRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    collection: str = Field(default="default")
+    max_iterations: int = Field(default=4, ge=1, le=8)
+    top_k: int = Field(default=6, ge=1, le=20)
+    sufficiency_threshold: float = Field(default=0.55, ge=0.1, le=0.95)
+
+
+class TTRAGIterationResponse(BaseModel):
+    iteration: int
+    query_used: str
+    rewrite_reason: str
+    new_chunks_retrieved: int
+    sufficiency_score: float
+    latency_ms: float
+
+
+class TTRAGResponse(BaseModel):
+    question: str
+    answer: str
+    iterations: list[TTRAGIterationResponse]
+    num_iterations: int
+    unique_chunks_used: int
+    final_sufficiency: float
+    converged: bool
+    tokens_used: int
+    latency_ms: float
+
+
+@app.post("/query/ttrag", response_model=TTRAGResponse, tags=["Query"])
+async def query_ttrag(request: TTRAGRequest) -> TTRAGResponse:
+    """
+    TTRAG — Test-Time Compute Scaling for RAG (ICLR 2025).
+
+    Iteratively rewrites the query and re-retrieves until sufficient context
+    is found. Each iteration uses LLM-guided query rewriting to target gaps
+    in the previously retrieved content.
+
+    Best for: hard questions where one-shot retrieval misses the right chunks,
+    queries with ambiguous terminology, and cases where Sufficient Context
+    would otherwise abstain.
+    """
+    from core.ttrag import run_ttrag
+    from core.retrieval import retrieve
+    from core.generation import get_backend, build_user_prompt, SYSTEM_PROMPT
+
+    backend = get_backend()
+
+    def _generate(q: str, ctx) -> tuple[str, int]:
+        prompt = build_user_prompt(ctx)
+        answer, tokens, _ = backend.complete(SYSTEM_PROMPT, prompt)
+        return answer, tokens
+
+    try:
+        result = run_ttrag(
+            question=request.question,
+            collection=request.collection,
+            retrieve_fn=retrieve,
+            llm_fn=backend.complete_raw,
+            generate_fn=_generate,
+            max_iterations=request.max_iterations,
+            top_k=request.top_k,
+            sufficiency_threshold=request.sufficiency_threshold,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return TTRAGResponse(
+        question=result.question,
+        answer=result.answer,
+        iterations=[
+            TTRAGIterationResponse(
+                iteration=it.iteration,
+                query_used=it.query_used,
+                rewrite_reason=it.rewrite_reason,
+                new_chunks_retrieved=len(it.retrieved),
+                sufficiency_score=it.sufficiency.overall_score,
+                latency_ms=it.latency_ms,
+            )
+            for it in result.iterations
+        ],
+        num_iterations=result.num_iterations,
+        unique_chunks_used=result.unique_chunks_used,
+        final_sufficiency=result.final_sufficiency,
+        converged=result.converged,
+        tokens_used=result.tokens_used,
+        latency_ms=result.latency_ms,
+    )
+
+
 # ── LightRAG (EMNLP 2025) ─────────────────────────────────────────────────────
 
 

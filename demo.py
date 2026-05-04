@@ -193,11 +193,12 @@ with st.sidebar:
     st.subheader("Query Mode")
     mode = st.radio(
         "Mode",
-        options=["Hybrid RAG", "CoT-RAG", "Agentic RAG", "Compare All"],
+        options=["Hybrid RAG", "CoT-RAG", "TTRAG", "Agentic RAG", "Compare All"],
         index=0,
         help=(
             "**Hybrid RAG:** Dense+BM25+RRF with cross-encoder reranking\n\n"
             "**CoT-RAG:** Chain-of-thought multi-hop reasoning\n\n"
+            "**TTRAG:** Test-time compute scaling — iterative query rewriting until sufficient context found (ICLR 2025)\n\n"
             "**Agentic RAG:** Claude tool-use with search_docs, search_web, query_sql, calculate\n\n"
             "**Compare All:** Run all modes and show side-by-side"
         ),
@@ -385,6 +386,73 @@ if run_btn and question.strip():
                 import traceback
                 st.code(traceback.format_exc())
 
+    elif mode == "TTRAG":
+        # ── TTRAG mode ────────────────────────────────────────────────────────
+        st.subheader("TTRAG — Test-Time Compute Scaling (ICLR 2025)")
+
+        max_iterations = st.sidebar.slider("Max iterations", 1, 8, 4)
+        threshold = st.sidebar.slider("Sufficiency threshold", 0.1, 0.9, 0.55, step=0.05)
+
+        with st.spinner("Iterative retrieval in progress…"):
+            try:
+                from core.ttrag import run_ttrag
+                from core.retrieval import retrieve
+                from core.generation import get_backend, build_user_prompt, SYSTEM_PROMPT
+
+                backend = get_backend()
+
+                def _generate(q: str, ctx) -> tuple[str, int]:
+                    prompt = build_user_prompt(ctx)
+                    answer, tokens, _ = backend.complete(SYSTEM_PROMPT, prompt)
+                    return answer, tokens
+
+                ttrag_result = run_ttrag(
+                    question=question,
+                    collection=collection,
+                    retrieve_fn=retrieve,
+                    llm_fn=backend.complete_raw,
+                    generate_fn=_generate,
+                    max_iterations=max_iterations,
+                    top_k=top_k,
+                    sufficiency_threshold=threshold,
+                )
+
+                # Iteration trace
+                if ttrag_result.iterations:
+                    with st.expander(f"Iteration Trace — {ttrag_result.num_iterations} iterations", expanded=True):
+                        for it in ttrag_result.iterations:
+                            suf_pct = f"{it.sufficiency.overall_score:.0%}"
+                            color = "green" if it.sufficiency.is_sufficient else ("orange" if it.sufficiency.overall_score >= 0.35 else "red")
+                            st.markdown(f"""
+                            <div class="step-card">
+                                <div class="step-number">Iteration {it.iteration}</div>
+                                <div style="color:#89dceb; font-size:0.85em; margin:4px 0">
+                                    Query: <code>{it.query_used}</code>
+                                </div>
+                                <div style="color:#a6adc8; font-size:0.83em">
+                                    New chunks: {len(it.retrieved)} &nbsp;|&nbsp;
+                                    Sufficiency: <span style="color:{color}">{suf_pct}</span>
+                                    {f" &nbsp;|&nbsp; Rewrite reason: {it.rewrite_reason}" if it.iteration > 1 else ""}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                st.markdown("### Answer")
+                st.markdown(ttrag_result.answer)
+
+                converged = "Converged" if ttrag_result.converged else "Max iterations reached"
+                m1, m2, m3, m4, m5 = st.columns(5)
+                m1.metric("Iterations", ttrag_result.num_iterations)
+                m2.metric("Unique chunks", ttrag_result.unique_chunks_used)
+                m3.metric("Sufficiency", f"{ttrag_result.final_sufficiency:.0%}")
+                m4.metric("Tokens", ttrag_result.tokens_used)
+                m5.metric("Status", converged)
+
+            except Exception as e:
+                st.error(f"TTRAG failed: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+
     elif mode == "Agentic RAG":
         # ── Agentic RAG mode ──────────────────────────────────────────────────
         st.subheader("Agentic RAG — Claude tool_use")
@@ -533,6 +601,6 @@ st.divider()
 st.caption(
     "Techniques: Hybrid dense+BM25+RRF · Cross-encoder reranking · HyDE · CRAG · "
     "MMR · RAPTOR · GraphRAG · LightRAG · Contextual Retrieval · CoT-RAG (EMNLP 2025) · "
-    "Sufficient Context (Google ICLR 2025) · Agentic tool_use · Langfuse tracing · "
-    "PII redaction · Prompt injection detection"
+    "TTRAG test-time scaling (ICLR 2025) · Sufficient Context (Google ICLR 2025) · "
+    "Agentic tool_use · Langfuse tracing · PII redaction · Prompt injection detection"
 )

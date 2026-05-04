@@ -1275,6 +1275,96 @@ def cot(
         console.print(f"[dim]Sources:[/dim] {', '.join(result.all_sources)}\n")
 
 
+# ── ttrag ─────────────────────────────────────────────────────────────────────
+
+
+@app.command()
+def ttrag(
+    question: Annotated[str, typer.Option("--question", "-q")],
+    collection: Annotated[str, typer.Option("--collection", "-c")] = settings.default_collection,
+    max_iterations: Annotated[int, typer.Option("--max-iterations")] = 4,
+    top_k: Annotated[int, typer.Option("--top-k", "-k")] = settings.top_k,
+    threshold: Annotated[float, typer.Option("--threshold")] = 0.55,
+    show_iterations: Annotated[bool, typer.Option("--show-iterations")] = True,
+) -> None:
+    """
+    [bold]TTRAG[/bold] — Test-Time Compute Scaling for RAG (ICLR 2025).
+
+    Iteratively rewrites the query and re-retrieves until sufficient context
+    is found, instead of one-shot retrieval. More compute at inference time
+    = better answers on hard questions.
+    """
+    from core.ttrag import run_ttrag
+    from core.retrieval import retrieve
+    from core.generation import get_backend, build_user_prompt, SYSTEM_PROMPT
+
+    _print_header("TTRAG — Test-Time Compute Scaling")
+    console.print(f"\n[bold]Question:[/bold] {question}\n")
+
+    backend = get_backend()
+
+    def _generate(q: str, ctx) -> tuple[str, int]:
+        prompt = build_user_prompt(ctx)
+        answer, tokens, _ = backend.complete(SYSTEM_PROMPT, prompt)
+        return answer, tokens
+
+    with Progress(SpinnerColumn(), TextColumn("{task.description}"), TimeElapsedColumn(), console=console) as prog:
+        task = prog.add_task("Iterative retrieval in progress…", total=None)
+        try:
+            result = run_ttrag(
+                question=question,
+                collection=collection,
+                retrieve_fn=retrieve,
+                llm_fn=backend.complete_raw,
+                generate_fn=_generate,
+                max_iterations=max_iterations,
+                top_k=top_k,
+                sufficiency_threshold=threshold,
+            )
+        except Exception as e:
+            console.print(f"\n[red]TTRAG failed: {e}[/red]")
+            raise typer.Exit(1) from e
+        prog.update(task, completed=True)
+
+    if show_iterations and result.iterations:
+        iter_table = Table(
+            title=f"Retrieval Iterations ({result.num_iterations})",
+            header_style="bold magenta",
+            show_lines=True,
+        )
+        iter_table.add_column("#", width=4, style="dim")
+        iter_table.add_column("Query used", max_width=40, style="cyan")
+        iter_table.add_column("New chunks", justify="right", width=10)
+        iter_table.add_column("Sufficiency", justify="right", width=12)
+        iter_table.add_column("ms", justify="right", width=7)
+
+        for it in result.iterations:
+            suf_pct = f"{it.sufficiency.overall_score:.0%}"
+            suf_color = "green" if it.sufficiency.is_sufficient else ("yellow" if it.sufficiency.overall_score >= 0.35 else "red")
+            iter_table.add_row(
+                str(it.iteration),
+                it.query_used[:40],
+                str(len(it.retrieved)),
+                f"[{suf_color}]{suf_pct}[/{suf_color}]",
+                f"{it.latency_ms:.0f}",
+            )
+        console.print(iter_table)
+
+    converged_str = "[green]converged[/green]" if result.converged else "[yellow]max iterations[/yellow]"
+    console.print(Panel(
+        result.answer,
+        title=(
+            f"[bold magenta]TTRAG Answer[/bold magenta]  [dim]·[/dim]  "
+            f"{result.num_iterations} iter  [dim]·[/dim]  "
+            f"{result.unique_chunks_used} unique chunks  [dim]·[/dim]  "
+            f"{result.final_sufficiency:.0%} sufficiency  [dim]·[/dim]  "
+            f"{converged_str}  [dim]·[/dim]  {result.latency_ms:.0f}ms"
+        ),
+        border_style="magenta",
+        padding=(1, 2),
+    ))
+
+
 # ── lightrag ──────────────────────────────────────────────────────────────────
 
 
