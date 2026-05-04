@@ -1365,6 +1365,88 @@ def ttrag(
     ))
 
 
+# ── speculative-rag ───────────────────────────────────────────────────────────
+
+
+@app.command(name="speculative")
+def speculative_rag(
+    question: Annotated[str, typer.Option("--question", "-q")],
+    collection: Annotated[str, typer.Option("--collection", "-c")] = settings.default_collection,
+    num_drafts: Annotated[int, typer.Option("--num-drafts")] = 3,
+    top_k: Annotated[int, typer.Option("--top-k", "-k")] = 9,
+    show_drafts: Annotated[bool, typer.Option("--show-drafts")] = True,
+) -> None:
+    """
+    [bold]Speculative RAG[/bold] — Google Research (2024).
+
+    Generates N independent draft answers from document subsets, scores each,
+    and selects the best. ~51% latency reduction vs. full-context generation
+    with accuracy gains from multi-draft selection.
+    """
+    from core.speculative_rag import run_speculative_rag
+    from core.retrieval import retrieve
+    from core.generation import get_backend
+
+    _print_header("Speculative RAG")
+    console.print(f"\n[bold]Question:[/bold] {question}\n")
+
+    backend = get_backend()
+
+    with Progress(SpinnerColumn(), TextColumn("{task.description}"), TimeElapsedColumn(), console=console) as prog:
+        task = prog.add_task(f"Generating {num_drafts} speculative drafts…", total=None)
+        try:
+            result = run_speculative_rag(
+                question=question,
+                collection=collection,
+                retrieve_fn=retrieve,
+                llm_complete_fn=backend.complete,
+                llm_raw_fn=backend.complete_raw,
+                num_drafts=num_drafts,
+                top_k=top_k,
+            )
+        except Exception as e:
+            console.print(f"\n[red]Speculative RAG failed: {e}[/red]")
+            raise typer.Exit(1) from e
+        prog.update(task, completed=True)
+
+    if show_drafts:
+        draft_table = Table(
+            title=f"Draft Comparison ({result.num_drafts} drafts)",
+            header_style="bold blue",
+            show_lines=True,
+        )
+        draft_table.add_column("#", width=4, style="dim")
+        draft_table.add_column("Chunks", justify="right", width=7)
+        draft_table.add_column("Confidence", justify="right", width=11)
+        draft_table.add_column("Draft preview", max_width=55)
+        draft_table.add_column("ms", justify="right", width=7)
+
+        for d in result.all_drafts:
+            selected = d.draft_id == result.selected_draft_id
+            conf_color = "green" if d.confidence_score >= 0.7 else ("yellow" if d.confidence_score >= 0.4 else "red")
+            draft_table.add_row(
+                f"[bold green]{d.draft_id}*[/bold green]" if selected else str(d.draft_id),
+                str(len(d.chunks)),
+                f"[{conf_color}]{d.confidence_score:.0%}[/{conf_color}]",
+                (d.answer[:55] + "…") if len(d.answer) > 55 else d.answer,
+                f"{d.latency_ms:.0f}",
+            )
+        console.print(draft_table)
+
+    console.print(Panel(
+        result.answer,
+        title=(
+            f"[bold blue]Speculative RAG Answer[/bold blue]  [dim]·[/dim]  "
+            f"draft {result.selected_draft_id}/{result.num_drafts}  [dim]·[/dim]  "
+            f"confidence {result.selected_draft.confidence_score:.0%}  [dim]·[/dim]  "
+            f"~{result.latency_reduction_pct:.0f}% faster  [dim]·[/dim]  "
+            f"{result.latency_ms:.0f}ms"
+        ),
+        border_style="blue",
+        padding=(1, 2),
+    ))
+
+
 # ── lightrag ──────────────────────────────────────────────────────────────────
 
 

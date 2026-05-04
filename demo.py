@@ -193,12 +193,13 @@ with st.sidebar:
     st.subheader("Query Mode")
     mode = st.radio(
         "Mode",
-        options=["Hybrid RAG", "CoT-RAG", "TTRAG", "Agentic RAG", "Compare All"],
+        options=["Hybrid RAG", "CoT-RAG", "TTRAG", "Speculative RAG", "Agentic RAG", "Compare All"],
         index=0,
         help=(
             "**Hybrid RAG:** Dense+BM25+RRF with cross-encoder reranking\n\n"
             "**CoT-RAG:** Chain-of-thought multi-hop reasoning\n\n"
             "**TTRAG:** Test-time compute scaling — iterative query rewriting until sufficient context found (ICLR 2025)\n\n"
+            "**Speculative RAG:** Generates N independent draft answers from document subsets, selects best by confidence — ~51% latency reduction (Google 2024)\n\n"
             "**Agentic RAG:** Claude tool-use with search_docs, search_web, query_sql, calculate\n\n"
             "**Compare All:** Run all modes and show side-by-side"
         ),
@@ -450,6 +451,64 @@ if run_btn and question.strip():
 
             except Exception as e:
                 st.error(f"TTRAG failed: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+
+    elif mode == "Speculative RAG":
+        # ── Speculative RAG mode ──────────────────────────────────────────────
+        st.subheader("Speculative RAG — Google Research (2024)")
+
+        num_drafts = st.sidebar.slider("Number of drafts", 2, 6, 3)
+
+        with st.spinner(f"Generating {num_drafts} speculative drafts…"):
+            try:
+                from core.speculative_rag import run_speculative_rag
+                from core.retrieval import retrieve
+                from core.generation import get_backend
+
+                backend = get_backend()
+
+                spec_result = run_speculative_rag(
+                    question=question,
+                    collection=collection,
+                    retrieve_fn=retrieve,
+                    llm_complete_fn=backend.complete,
+                    llm_raw_fn=backend.complete_raw,
+                    num_drafts=num_drafts,
+                    top_k=top_k,
+                )
+
+                # Draft comparison table
+                with st.expander(f"Draft Comparison — {spec_result.num_drafts} drafts", expanded=True):
+                    for d in spec_result.all_drafts:
+                        selected = d.draft_id == spec_result.selected_draft_id
+                        border = "#a6e3a1" if selected else "#313244"
+                        label = " ✓ Selected" if selected else ""
+                        conf_color = "#a6e3a1" if d.confidence_score >= 0.7 else ("#f9e2af" if d.confidence_score >= 0.4 else "#f38ba8")
+                        st.markdown(f"""
+                        <div class="source-card" style="border-left-color:{border}">
+                            <div class="source-header">
+                                Draft {d.draft_id}{label} &nbsp;
+                                <span class="score-badge" style="background:{conf_color}; color:#1e1e2e">
+                                    confidence {d.confidence_score:.0%}
+                                </span>
+                                &nbsp; <span style="color:#6c7086; font-size:0.8em">{len(d.chunks)} chunks · {d.latency_ms:.0f}ms</span>
+                            </div>
+                            <div style="color:#cdd6f4; margin-top:6px">{d.answer[:300]}{'…' if len(d.answer) > 300 else ''}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                st.markdown("### Selected Answer")
+                st.markdown(spec_result.answer)
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Drafts", spec_result.num_drafts)
+                m2.metric("Winning draft", f"#{spec_result.selected_draft_id}")
+                m3.metric("Est. latency reduction", f"~{spec_result.latency_reduction_pct:.0f}%")
+                m4.metric("Total latency", f"{spec_result.latency_ms:.0f}ms")
+
+            except Exception as e:
+                st.error(f"Speculative RAG failed: {e}")
                 import traceback
                 st.code(traceback.format_exc())
 

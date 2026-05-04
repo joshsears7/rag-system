@@ -1375,6 +1375,86 @@ async def query_ttrag(request: TTRAGRequest) -> TTRAGResponse:
     )
 
 
+# ── Speculative RAG (Google Research 2024) ───────────────────────────────────
+
+
+class SpeculativeRAGRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    collection: str = Field(default="default")
+    num_drafts: int = Field(default=3, ge=2, le=6)
+    top_k: int = Field(default=9, ge=3, le=30)
+
+
+class SpeculativeDraftResponse(BaseModel):
+    draft_id: int
+    confidence_score: float
+    answer: str
+    num_chunks: int
+    latency_ms: float
+
+
+class SpeculativeRAGResponse(BaseModel):
+    question: str
+    answer: str
+    selected_draft_id: int
+    all_drafts: list[SpeculativeDraftResponse]
+    num_drafts: int
+    total_chunks_retrieved: int
+    latency_reduction_pct: float
+    tokens_used: int
+    latency_ms: float
+
+
+@app.post("/query/speculative", response_model=SpeculativeRAGResponse, tags=["Query"])
+async def query_speculative(request: SpeculativeRAGRequest) -> SpeculativeRAGResponse:
+    """
+    Speculative RAG — Google Research (2024).
+
+    Generates N independent draft answers from document subsets, scores each
+    with LLM self-rating, and returns the highest-confidence draft.
+    Achieves ~51% latency reduction vs. full-context generation.
+    """
+    from core.speculative_rag import run_speculative_rag
+    from core.retrieval import retrieve
+    from core.generation import get_backend
+
+    backend = get_backend()
+
+    try:
+        result = run_speculative_rag(
+            question=request.question,
+            collection=request.collection,
+            retrieve_fn=retrieve,
+            llm_complete_fn=backend.complete,
+            llm_raw_fn=backend.complete_raw,
+            num_drafts=request.num_drafts,
+            top_k=request.top_k,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return SpeculativeRAGResponse(
+        question=result.question,
+        answer=result.answer,
+        selected_draft_id=result.selected_draft_id,
+        all_drafts=[
+            SpeculativeDraftResponse(
+                draft_id=d.draft_id,
+                confidence_score=d.confidence_score,
+                answer=d.answer,
+                num_chunks=len(d.chunks),
+                latency_ms=d.latency_ms,
+            )
+            for d in result.all_drafts
+        ],
+        num_drafts=result.num_drafts,
+        total_chunks_retrieved=result.total_chunks_retrieved,
+        latency_reduction_pct=result.latency_reduction_pct,
+        tokens_used=result.tokens_used,
+        latency_ms=result.latency_ms,
+    )
+
+
 # ── LightRAG (EMNLP 2025) ─────────────────────────────────────────────────────
 
 
