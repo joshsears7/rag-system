@@ -182,10 +182,55 @@ with st.sidebar:
     st.caption("Production RAG — 2025 techniques")
     st.divider()
 
+    # ── File upload ───────────────────────────────────────────────────────────
+    st.subheader("Upload Your Documents")
+    uploaded_files = st.file_uploader(
+        "Upload PDF, TXT, or DOCX files",
+        type=["pdf", "txt", "docx", "md"],
+        accept_multiple_files=True,
+        help="Upload your own documents to query against. Files are processed in-session.",
+    )
+
+    if uploaded_files:
+        import tempfile, pathlib
+        from core.ingestion import ingest_document
+
+        for uf in uploaded_files:
+            file_key = f"ingested_{uf.name}"
+            if file_key not in st.session_state:
+                with st.spinner(f"Ingesting {uf.name}…"):
+                    try:
+                        with tempfile.NamedTemporaryFile(
+                            delete=False,
+                            suffix=pathlib.Path(uf.name).suffix,
+                        ) as tmp:
+                            tmp.write(uf.read())
+                            tmp_path = tmp.name
+                        result = ingest_document(tmp_path, collection="user_upload")
+                        pathlib.Path(tmp_path).unlink(missing_ok=True)
+                        st.session_state[file_key] = result.chunks_added
+                        st.success(f"{uf.name}: {result.chunks_added} chunks indexed")
+                    except Exception as e:
+                        st.error(f"{uf.name}: {e}")
+
+        # Auto-switch to user_upload collection
+        if any(f"ingested_{uf.name}" in st.session_state for uf in uploaded_files):
+            st.info("Querying your uploaded documents.")
+            _upload_collection = "user_upload"
+        else:
+            _upload_collection = None
+    else:
+        _upload_collection = None
+
+    st.divider()
+
     # Collection picker
     st.subheader("Knowledge Base")
     collections = get_collections()
-    collection = st.selectbox("Collection", collections, index=0)
+    if _upload_collection and _upload_collection not in collections:
+        collections = [_upload_collection] + collections
+    default_idx = collections.index(_upload_collection) if _upload_collection and _upload_collection in collections else 0
+    collection = st.selectbox("Collection", collections, index=default_idx)
 
     st.divider()
 
@@ -223,10 +268,10 @@ with st.sidebar:
 
 # ── Main area ─────────────────────────────────────────────────────────────────
 
-st.title("RAG System — Interactive Demo")
+st.title("RAG System — Ask Your Documents")
 st.caption(
-    "Hybrid retrieval · Cross-encoder reranking · HyDE · CRAG · RAPTOR · GraphRAG · "
-    "LightRAG · Contextual Retrieval · CoT-RAG · Agentic RAG · Sufficient Context"
+    "Upload your own PDFs, reports, or contracts in the sidebar — then ask questions about them. "
+    "Hybrid retrieval · CoT-RAG · TTRAG · Speculative RAG · A-RAG · Sufficient Context abstention"
 )
 
 # Example questions
