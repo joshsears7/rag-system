@@ -209,12 +209,28 @@ with st.sidebar:
                         result = ingest_document(tmp_path, collection_name="user_upload")
                         pathlib.Path(tmp_path).unlink(missing_ok=True)
                         st.session_state[file_key] = result.chunks_added
-                        st.success(f"{uf.name}: {result.chunks_added} chunks indexed")
                     except Exception as e:
-                        st.error(f"{uf.name}: {e}")
+                        st.session_state[file_key] = -1
+                        st.session_state[f"ingest_error_{uf.name}"] = str(e)
 
-        # Auto-switch to user_upload collection
-        if any(f"ingested_{uf.name}" in st.session_state for uf in uploaded_files):
+        # Show persistent status for each file
+        total_chunks = 0
+        for uf in uploaded_files:
+            file_key = f"ingested_{uf.name}"
+            chunks = st.session_state.get(file_key, None)
+            if chunks is None:
+                pass
+            elif chunks == -1:
+                err = st.session_state.get(f"ingest_error_{uf.name}", "unknown error")
+                st.error(f"{uf.name}: ingest failed — {err}")
+            elif chunks == 0:
+                st.warning(f"{uf.name}: 0 chunks extracted. If this is a scanned/image PDF, text extraction won't work — try a text-based PDF or TXT file.")
+            else:
+                st.success(f"{uf.name}: {chunks} chunks indexed ✓")
+                total_chunks += chunks
+
+        # Auto-switch to user_upload collection only if chunks were actually indexed
+        if total_chunks > 0:
             st.info("Querying your uploaded documents.")
             _upload_collection = "user_upload"
         else:
