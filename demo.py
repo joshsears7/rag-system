@@ -206,7 +206,7 @@ with st.sidebar:
                         ) as tmp:
                             tmp.write(uf.read())
                             tmp_path = tmp.name
-                        result = ingest_document(tmp_path, collection="user_upload")
+                        result = ingest_document(tmp_path, collection_name="user_upload")
                         pathlib.Path(tmp_path).unlink(missing_ok=True)
                         st.session_state[file_key] = result.chunks_added
                         st.success(f"{uf.name}: {result.chunks_added} chunks indexed")
