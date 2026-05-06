@@ -78,7 +78,7 @@ class Settings(BaseSettings):
 
     # ── Retrieval ─────────────────────────────────────────────────────────────
     top_k: int = Field(default=6, ge=1, le=50, description="Number of chunks to retrieve")
-    similarity_threshold: float = Field(default=0.35, ge=0.0, le=1.0, description="Minimum cosine similarity to include a result")
+    similarity_threshold: float = Field(default=0.20, ge=0.0, le=1.0, description="Minimum cosine similarity to include a result")
     mmr_lambda: float = Field(default=0.5, ge=0.0, le=1.0, description="MMR lambda: 1.0 = pure relevance, 0.0 = pure diversity")
     use_reranker: bool = Field(default=True, description="Apply cross-encoder reranking after retrieval")
     reranker_model: str = Field(

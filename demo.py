@@ -293,11 +293,11 @@ st.caption(
 # Example questions
 with st.expander("Example questions", expanded=False):
     examples = [
-        "What are the main themes in the ingested documents?",
-        "How does X relate to Y? (replace with entities from your docs)",
-        "Summarize the key findings",
-        "What happened in 2023?",
-        "Compare the approaches described in the documents",
+        "Summarize this document",
+        "What are the main themes?",
+        "What is the author's argument or conclusion?",
+        "What evidence or examples are provided?",
+        "What are the key findings or takeaways?",
     ]
     for ex in examples:
         if st.button(ex, key=f"ex_{ex[:20]}"):
