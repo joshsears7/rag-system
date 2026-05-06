@@ -227,6 +227,12 @@ class Settings(BaseSettings):
         """Resolve chroma persist dir to absolute path."""
         return Path(v).resolve()
 
+    @field_validator("anthropic_api_key", "openai_api_key", mode="before")
+    @classmethod
+    def strip_key(cls, v: str) -> str:
+        """Strip whitespace/newlines that env vars sometimes carry from secrets managers."""
+        return v.strip() if isinstance(v, str) else v
+
     def validate_backend_credentials(self) -> None:
         """
         Raise ValueError if required credentials are missing for the selected backend.

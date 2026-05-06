@@ -135,7 +135,7 @@ class ClaudeBackend:
     def __init__(self) -> None:
         try:
             import anthropic
-            self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key.strip())
+            self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
             self.model = settings.claude_model
             logger.info("Claude backend initialized (model: %s)", self.model)
         except ImportError as e:
@@ -548,7 +548,7 @@ def answer_structured(
     if settings.llm_backend.value == "claude" and settings.anthropic_api_key:
         try:
             import anthropic, json as _json2
-            client = anthropic.Anthropic(api_key=settings.anthropic_api_key.strip())
+            client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
             msg = client.messages.create(
                 model=settings.claude_model,
                 max_tokens=1024,

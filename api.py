@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncIterator, AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Path, status
@@ -98,9 +99,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Attach Prometheus metrics if available
@@ -172,6 +173,14 @@ async def ingest(request: IngestRequestExtended) -> IngestResultExtended:
     from core.ingestion import ingest_document, load_document
     from core.document_processor import analyze_document
     from core.graph_rag import get_knowledge_graph, extract_triples
+
+    # Reject path traversal attempts on local file paths
+    src = request.file_path
+    if not (src.startswith("http://") or src.startswith("https://")):
+        resolved = Path(src).resolve()
+        allowed = Path(".").resolve()
+        if not str(resolved).startswith(str(allowed)):
+            raise HTTPException(status_code=400, detail="file_path must be within the working directory or a URL")
 
     try:
         result = ingest_document(
@@ -875,17 +884,19 @@ async def feedback_export(collection: str | None = None) -> dict:
     """Export all feedback entries as a list (for offline analysis or fine-tuning)."""
     from core.feedback import get_feedback_store
     import tempfile, json as _json
-    from pathlib import Path
 
     store = get_feedback_store()
-    tmp = Path(tempfile.mktemp(suffix=".jsonl"))
-    n = store.export_jsonl(tmp, collection)
     records = []
-    if tmp.exists():
-        with open(tmp) as f:
-            for line in f:
-                records.append(_json.loads(line))
-        tmp.unlink()
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".jsonl") as tf:
+        tmp_path = Path(tf.name)
+    try:
+        n = store.export_jsonl(tmp_path, collection)
+        if tmp_path.exists():
+            with open(tmp_path) as f:
+                for line in f:
+                    records.append(_json.loads(line))
+    finally:
+        tmp_path.unlink(missing_ok=True)
     return {"count": n, "records": records}
 
 

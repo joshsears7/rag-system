@@ -188,7 +188,7 @@ with st.sidebar:
         "Upload PDF, TXT, or DOCX files",
         type=["pdf", "txt", "docx", "md"],
         accept_multiple_files=True,
-        help="Upload your own documents to query against. Files are processed in-session.",
+        help="Max 200 MB per file. PDF, TXT, DOCX, Markdown supported. Scanned/image PDFs won't extract — use text-based files.",
     )
 
     if uploaded_files:
@@ -199,6 +199,7 @@ with st.sidebar:
             file_key = f"ingested_{uf.name}"
             if file_key not in st.session_state:
                 with st.spinner(f"Ingesting {uf.name}…"):
+                    tmp_path = None
                     try:
                         with tempfile.NamedTemporaryFile(
                             delete=False,
@@ -207,11 +208,13 @@ with st.sidebar:
                             tmp.write(uf.read())
                             tmp_path = tmp.name
                         result = ingest_document(tmp_path, collection_name="user_upload")
-                        pathlib.Path(tmp_path).unlink(missing_ok=True)
                         st.session_state[file_key] = result.chunks_added
                     except Exception as e:
                         st.session_state[file_key] = -1
                         st.session_state[f"ingest_error_{uf.name}"] = str(e)
+                    finally:
+                        if tmp_path:
+                            pathlib.Path(tmp_path).unlink(missing_ok=True)
 
         # Show persistent status for each file
         total_chunks = 0
@@ -446,8 +449,10 @@ if run_btn and question.strip():
 
             except Exception as e:
                 st.error(f"CoT-RAG failed: {e}")
-                import traceback
-                st.code(traceback.format_exc())
+                import traceback, logging as _logging
+                _logging.getLogger(__name__).error(traceback.format_exc())
+                with st.expander("Technical details"):
+                    st.code(traceback.format_exc().split("site-packages")[0])
 
     elif mode == "TTRAG":
         # ── TTRAG mode ────────────────────────────────────────────────────────
@@ -513,8 +518,10 @@ if run_btn and question.strip():
 
             except Exception as e:
                 st.error(f"TTRAG failed: {e}")
-                import traceback
-                st.code(traceback.format_exc())
+                import traceback, logging as _logging
+                _logging.getLogger(__name__).error(traceback.format_exc())
+                with st.expander("Technical details"):
+                    st.code(traceback.format_exc().split("site-packages")[0])
 
     elif mode == "Speculative RAG":
         # ── Speculative RAG mode ──────────────────────────────────────────────
@@ -571,8 +578,10 @@ if run_btn and question.strip():
 
             except Exception as e:
                 st.error(f"Speculative RAG failed: {e}")
-                import traceback
-                st.code(traceback.format_exc())
+                import traceback, logging as _logging
+                _logging.getLogger(__name__).error(traceback.format_exc())
+                with st.expander("Technical details"):
+                    st.code(traceback.format_exc().split("site-packages")[0])
 
     elif mode == "A-RAG":
         # ── A-RAG mode ────────────────────────────────────────────────────────
@@ -634,8 +643,10 @@ if run_btn and question.strip():
 
             except Exception as e:
                 st.error(f"A-RAG failed: {e}")
-                import traceback
-                st.code(traceback.format_exc())
+                import traceback, logging as _logging
+                _logging.getLogger(__name__).error(traceback.format_exc())
+                with st.expander("Technical details"):
+                    st.code(traceback.format_exc().split("site-packages")[0])
 
     elif mode == "Agentic RAG":
         # ── Agentic RAG mode ──────────────────────────────────────────────────
@@ -696,8 +707,10 @@ if run_btn and question.strip():
 
             except Exception as e:
                 st.error(f"Agent failed: {e}")
-                import traceback
-                st.code(traceback.format_exc())
+                import traceback, logging as _logging
+                _logging.getLogger(__name__).error(traceback.format_exc())
+                with st.expander("Technical details"):
+                    st.code(traceback.format_exc().split("site-packages")[0])
 
     else:
         # ── Hybrid RAG (default) ──────────────────────────────────────────────
@@ -742,9 +755,9 @@ if run_btn and question.strip():
                         st.error(f"Insufficient context ({suf.overall_score:.0%}): {suf.explanation}")
                         st.stop()
                     elif suf.recommendation == "web_search":
-                        st.warning("Triggering web search fallback…")
+                        st.info("Context is limited — consider enabling Web Search Fallback in your .env for broader coverage.")
                     elif suf.recommendation == "retrieve_more":
-                        st.info("Context borderline — attempting to retrieve more chunks.")
+                        st.info("Context borderline — answer may be partial. Try increasing top_k or using CoT-RAG mode.")
 
                 # Full generation
                 response = answer_question(req)
@@ -752,6 +765,13 @@ if run_btn and question.strip():
                 # Answer
                 st.markdown("### Answer")
                 st.markdown(response.answer)
+                st.download_button(
+                    "Download answer",
+                    data=response.answer,
+                    file_name="rag_answer.txt",
+                    mime="text/plain",
+                    use_container_width=False,
+                )
 
                 # Metrics
                 m1, m2, m3, m4 = st.columns(4)
@@ -772,8 +792,10 @@ if run_btn and question.strip():
 
             except Exception as e:
                 st.error(f"Query failed: {e}")
-                import traceback
-                st.code(traceback.format_exc())
+                import traceback, logging as _logging
+                _logging.getLogger(__name__).error(traceback.format_exc())
+                with st.expander("Technical details"):
+                    st.code(traceback.format_exc().split("site-packages")[0])
 
 elif run_btn:
     st.warning("Please enter a question.")

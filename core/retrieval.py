@@ -15,6 +15,7 @@ Retrieval pipeline with state-of-the-art techniques:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections import defaultdict
 from typing import Callable
@@ -37,15 +38,18 @@ logger = logging.getLogger(__name__)
 
 # ── Singleton cross-encoder ───────────────────────────────────────────────────
 _cross_encoder: CrossEncoder | None = None
+_cross_encoder_lock = threading.Lock()
 
 
 def get_cross_encoder() -> CrossEncoder:
     """Lazy-load the cross-encoder model (warm-up only on first rerank call)."""
     global _cross_encoder
     if _cross_encoder is None:
-        logger.info("Loading cross-encoder '%s'…", settings.reranker_model)
-        _cross_encoder = CrossEncoder(settings.reranker_model)
-        logger.info("Cross-encoder ready.")
+        with _cross_encoder_lock:
+            if _cross_encoder is None:
+                logger.info("Loading cross-encoder '%s'…", settings.reranker_model)
+                _cross_encoder = CrossEncoder(settings.reranker_model)
+                logger.info("Cross-encoder ready.")
     return _cross_encoder
 
 
