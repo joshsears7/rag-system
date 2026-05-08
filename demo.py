@@ -175,11 +175,198 @@ def get_collections() -> list[str]:
         return ["default"]
 
 
+# ── Second Brain page ─────────────────────────────────────────────────────────
+
+def _render_brain_page() -> None:
+    """Render the Personal Second Brain page."""
+    from datetime import datetime as _dt
+    from core.brain import add_note, add_source, query_brain, list_sources, get_all_tags, daily_digest
+
+    st.title("Second Brain — Personal Knowledge Base")
+    st.caption(
+        "Capture notes, files, and URLs. Query your personal knowledge with time and tag filters. "
+        "All content lives in its own isolated collection separate from your document RAG."
+    )
+
+    cap_tab, query_tab, browse_tab = st.tabs(["Capture", "Query", "Browse"])
+
+    # ── Capture tab ───────────────────────────────────────────────────────────
+    with cap_tab:
+        st.subheader("Add to Your Brain")
+        capture_type = st.radio("What are you adding?", ["Note", "File", "URL"], horizontal=True)
+        tags_input = st.text_input("Tags (comma-separated)", placeholder="ai, research, finance", key="brain_tags_input")
+        tags = [t.strip().lower() for t in tags_input.split(",") if t.strip()]
+
+        if capture_type == "Note":
+            note_title = st.text_input("Title", placeholder="My note title", key="brain_note_title")
+            note_text = st.text_area("Note", placeholder="Write your note here…", height=200, key="brain_note_text")
+            if st.button("Save Note", type="primary", key="brain_save_note"):
+                if note_text.strip():
+                    with st.spinner("Saving…"):
+                        try:
+                            result = add_note(note_text.strip(), title=note_title, tags=tags)
+                            if result.chunks_added > 0:
+                                st.success(f"Saved! {result.chunks_added} chunk(s) added to your brain.")
+                            else:
+                                st.info("Already in your brain (duplicate content).")
+                        except Exception as e:
+                            st.error(f"Failed to save: {e}")
+                else:
+                    st.warning("Note is empty.")
+
+        elif capture_type == "File":
+            uploaded = st.file_uploader("Upload a file", type=["pdf", "txt", "md", "docx"], key="brain_file_upload")
+            file_title = st.text_input("Title (optional, defaults to filename)", key="brain_file_title")
+            if st.button("Add File", type="primary", key="brain_add_file") and uploaded:
+                import tempfile as _tf, os as _os
+                with st.spinner(f"Processing '{uploaded.name}'…"):
+                    try:
+                        suffix = Path(uploaded.name).suffix
+                        with _tf.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                            f.write(uploaded.getvalue())
+                            tmp_path = f.name
+                        try:
+                            result = add_source(tmp_path, tags=tags, title=file_title or uploaded.name)
+                        finally:
+                            _os.unlink(tmp_path)
+                        if result.chunks_added > 0:
+                            st.success(f"Added {result.chunks_added} chunk(s) from '{uploaded.name}'.")
+                        else:
+                            st.info("Already in your brain (duplicate content).")
+                    except Exception as e:
+                        st.error(f"Failed to add file: {e}")
+
+        elif capture_type == "URL":
+            url_input = st.text_input("URL", placeholder="https://…", key="brain_url_input")
+            url_title = st.text_input("Title (optional)", key="brain_url_title")
+            if st.button("Add URL", type="primary", key="brain_add_url") and url_input.strip():
+                with st.spinner(f"Fetching '{url_input}'…"):
+                    try:
+                        result = add_source(url_input.strip(), tags=tags, title=url_title or url_input)
+                        if result.chunks_added > 0:
+                            st.success(f"Added {result.chunks_added} chunk(s) from URL.")
+                        else:
+                            st.info("Already in your brain (duplicate content).")
+                    except Exception as e:
+                        st.error(f"Failed to add URL: {e}")
+
+    # ── Query tab ─────────────────────────────────────────────────────────────
+    with query_tab:
+        st.subheader("Ask Your Brain")
+        brain_q = st.text_area(
+            "Question", placeholder="What do I know about…?", height=80, key="brain_question"
+        )
+
+        col_tags, col_time = st.columns(2)
+        with col_tags:
+            filter_tags_str = st.text_input("Filter by tags", placeholder="ai, finance", key="brain_filter_tags")
+        with col_time:
+            time_range = st.selectbox(
+                "Time range", ["All time", "Today", "Last 7 days", "Last 30 days"], key="brain_time_range"
+            )
+
+        filter_tags = [t.strip() for t in filter_tags_str.split(",") if t.strip()]
+        days_map = {"All time": None, "Today": 1, "Last 7 days": 7, "Last 30 days": 30}
+        days = days_map[time_range]
+
+        if st.button("Ask Brain", type="primary", key="brain_ask_btn") and brain_q.strip():
+            with st.spinner("Searching your knowledge base…"):
+                try:
+                    response = query_brain(brain_q.strip(), tags=filter_tags, days=days)
+                    st.markdown("### Answer")
+                    st.markdown(response.answer)
+
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Latency", f"{response.latency_ms:.0f}ms")
+                    m2.metric("Sources", len(response.sources))
+                    m3.metric("Tokens", response.tokens_used)
+
+                    if response.sources:
+                        with st.expander(f"Sources ({len(response.sources)})"):
+                            for i, src in enumerate(response.sources, 1):
+                                render_source_card(src, i)
+                except Exception as e:
+                    st.error(f"Query failed: {e}")
+
+    # ── Browse tab ────────────────────────────────────────────────────────────
+    with browse_tab:
+        st.subheader("Knowledge Browser")
+
+        col_tags_browse, col_digest = st.columns(2)
+
+        with col_tags_browse:
+            st.markdown("**Tags in your brain**")
+            try:
+                tags_map = get_all_tags()
+                if tags_map:
+                    for tag, count in sorted(tags_map.items(), key=lambda x: -x[1]):
+                        st.markdown(f"`{tag}` — {count} chunk(s)")
+                else:
+                    st.caption("No tags yet. Add content with tags to get started.")
+            except Exception as e:
+                st.caption(f"Could not load tags: {e}")
+
+        with col_digest:
+            st.markdown("**Daily Digest**")
+            digest_range = st.selectbox(
+                "Summarize activity from",
+                ["Today", "Last 7 days", "Last 30 days"],
+                key="brain_digest_range",
+            )
+            digest_days_map = {"Today": 1, "Last 7 days": 7, "Last 30 days": 30}
+            if st.button("Generate Digest", key="brain_digest_btn"):
+                with st.spinner("Summarizing…"):
+                    try:
+                        digest = daily_digest(days=digest_days_map[digest_range])
+                        st.markdown(digest)
+                    except Exception as e:
+                        st.error(f"Digest failed: {e}")
+
+        st.divider()
+        st.markdown("**Sources**")
+
+        browse_range = st.selectbox(
+            "Show from", ["All time", "Last 7 days", "Last 30 days"], key="brain_browse_range"
+        )
+        browse_days = {"All time": None, "Last 7 days": 7, "Last 30 days": 30}[browse_range]
+
+        try:
+            sources = list_sources(days=browse_days, limit=50)
+            if sources:
+                for m in sources:
+                    brain_type = m.get("brain_type", "unknown")
+                    title = m.get("brain_title", m.get("source_file", "Unknown"))
+                    tags_str = m.get("brain_tags", "")
+                    ts = m.get("brain_ingested_at", 0)
+                    dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else "unknown"
+                    icon = {"note": "📝", "file": "📄", "url": "🔗"}.get(brain_type, "📌")
+                    tags_display = f" &nbsp; `{tags_str}`" if tags_str else ""
+                    st.markdown(
+                        f"{icon} **{title}** &nbsp;"
+                        f"<span style='color:#6c7086; font-size:0.85em'>{dt_str}</span>"
+                        f"{tags_display}",
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.caption("No sources yet. Add notes, files, or URLs in the Capture tab.")
+        except Exception as e:
+            st.caption(f"Could not load sources: {e}")
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.title("🔍 RAG System")
     st.caption("Production RAG — 2025 techniques")
+    st.divider()
+
+    page = st.radio(
+        "View",
+        ["Document Q&A", "Second Brain"],
+        horizontal=True,
+        key="page_selector",
+        label_visibility="collapsed",
+    )
     st.divider()
 
     # ── File upload ───────────────────────────────────────────────────────────
@@ -257,13 +444,14 @@ with st.sidebar:
     st.subheader("Query Mode")
     mode = st.radio(
         "Mode",
-        options=["Hybrid RAG", "CoT-RAG", "TTRAG", "Speculative RAG", "A-RAG", "Agentic RAG", "Compare All"],
+        options=["Hybrid RAG", "Chat", "CoT-RAG", "TTRAG", "Speculative RAG", "A-RAG", "Agentic RAG", "Compare All"],
         index=0,
         help=(
-            "**Hybrid RAG:** Dense+BM25+RRF with cross-encoder reranking\n\n"
+            "**Hybrid RAG:** Dense+BM25+RRF with cross-encoder reranking — streams response token by token\n\n"
+            "**Chat:** Multi-turn conversation with memory — ask follow-up questions naturally\n\n"
             "**CoT-RAG:** Chain-of-thought multi-hop reasoning\n\n"
             "**TTRAG:** Test-time compute scaling — iterative query rewriting until sufficient context found (ICLR 2025)\n\n"
-            "**Speculative RAG:** Generates N independent draft answers from document subsets, selects best by confidence — ~51% latency reduction (Google 2024)\n\n"
+            "**Speculative RAG:** Generates N independent draft answers from document subsets, selects best by confidence (Google 2024)\n\n"
             "**A-RAG:** Agent picks retrieval interface per step (keyword/semantic/hybrid/section) — hierarchical retrieval interfaces (Feb 2026)\n\n"
             "**Agentic RAG:** Claude tool-use with search_docs, search_web, query_sql, calculate\n\n"
             "**Compare All:** Run all modes and show side-by-side"
@@ -281,40 +469,52 @@ with st.sidebar:
     enable_self_rating = st.toggle("LLM self-rating (slower)", value=False)
 
     st.divider()
+    if mode == "Chat":
+        if st.button("Clear conversation", use_container_width=True):
+            st.session_state.pop("conv_memory", None)
+            st.session_state.pop("chat_history", None)
+            st.rerun()
     st.caption(f"Backend: `{settings.llm_backend.value}`")
     st.caption(f"Embedding: `{settings.embedding_model}`")
 
 
 # ── Main area ─────────────────────────────────────────────────────────────────
 
+if st.session_state.get("page_selector") == "Second Brain":
+    _render_brain_page()
+    st.stop()
+
 st.title("RAG System — Ask Your Documents")
 st.caption(
     "Upload your own PDFs, reports, or contracts in the sidebar — then ask questions about them. "
-    "Hybrid retrieval · CoT-RAG · TTRAG · Speculative RAG · A-RAG · Sufficient Context abstention"
+    "Streaming responses · Multi-turn chat · CoT-RAG · TTRAG · Speculative RAG · A-RAG · Sufficient Context abstention"
 )
 
-# Example questions
-with st.expander("Example questions", expanded=False):
-    examples = [
-        "Summarize this document",
-        "What are the main themes?",
-        "What is the author's argument or conclusion?",
-        "What evidence or examples are provided?",
-        "What are the key findings or takeaways?",
-    ]
-    for ex in examples:
-        if st.button(ex, key=f"ex_{ex[:20]}"):
-            st.session_state["question_input"] = ex
+if mode != "Chat":
+    with st.expander("Example questions", expanded=False):
+        examples = [
+            "Summarize this document",
+            "What are the main themes?",
+            "What is the author's argument or conclusion?",
+            "What evidence or examples are provided?",
+            "What are the key findings or takeaways?",
+        ]
+        for ex in examples:
+            if st.button(ex, key=f"ex_{ex[:20]}"):
+                st.session_state["question_input"] = ex
 
-question = st.text_area(
-    "Ask a question",
-    value=st.session_state.get("question_input", ""),
-    placeholder="Ask anything about your ingested documents…",
-    height=80,
-    key="question_input",
-)
-
-run_btn = st.button("Ask", type="primary", use_container_width=True)
+if mode == "Chat":
+    question = st.chat_input("Ask a follow-up question…")
+    run_btn = bool(question)
+else:
+    question = st.text_area(
+        "Ask a question",
+        value=st.session_state.get("question_input", ""),
+        placeholder="Ask anything about your ingested documents…",
+        height=80,
+        key="question_input",
+    )
+    run_btn = st.button("Ask", type="primary", use_container_width=True)
 
 
 # ── Query execution ───────────────────────────────────────────────────────────
@@ -712,90 +912,166 @@ if run_btn and question.strip():
                 with st.expander("Technical details"):
                     st.code(traceback.format_exc().split("site-packages")[0])
 
+    elif mode == "Chat":
+        # ── Multi-turn Chat mode ──────────────────────────────────────────────
+        from core.generation import get_backend, stream_from_context, extract_sources
+        from core.retrieval import retrieve
+        from core.conversation import ConversationMemory, ConversationTurn
+
+        if "conv_memory" not in st.session_state:
+            st.session_state["conv_memory"] = ConversationMemory(max_turns=10, summarize_after=6)
+        if "chat_history" not in st.session_state:
+            st.session_state["chat_history"] = []  # list of (role, text, sources)
+
+        memory: ConversationMemory = st.session_state["conv_memory"]
+        backend = get_backend()
+
+        # Display conversation history
+        for role, text, sources in st.session_state["chat_history"]:
+            with st.chat_message(role):
+                st.markdown(text)
+                if sources and role == "assistant":
+                    with st.expander(f"Sources ({len(sources)})"):
+                        for i, src in enumerate(sources, 1):
+                            render_source_card(src, i)
+
+        # Process new question
+        try:
+            resolved_q = memory.resolve_references(question, backend.complete_raw)
+
+            req = QueryRequest(
+                question=resolved_q,
+                collection=collection,
+                top_k=top_k,
+                mode=QueryMode.HYBRID,
+            )
+            from core.generation import make_crag_evaluator
+            context = retrieve(req, generate_fn=backend.complete_raw,
+                               evaluate_fn=make_crag_evaluator(backend) if settings.use_hybrid_search else None)
+
+            # Sufficiency check
+            if enable_sufficiency and not context.is_empty:
+                from core.sufficient_context import check_sufficiency
+                suf = check_sufficiency(question=resolved_q, context=context,
+                                        llm_fn=backend.complete_raw if enable_self_rating else None,
+                                        enable_self_rating=enable_self_rating)
+                render_sufficiency_bar(suf.overall_score)
+                if suf.recommendation == "abstain":
+                    st.error(f"Insufficient context ({suf.overall_score:.0%}): {suf.explanation}")
+                    st.stop()
+
+            # Show user message and stream assistant reply
+            st.session_state["chat_history"].append(("user", question, []))
+            with st.chat_message("user"):
+                st.markdown(question)
+
+            with st.chat_message("assistant"):
+                conv_ctx = memory.build_context_prompt()
+                t0 = time.perf_counter()
+                answer = st.write_stream(stream_from_context(context, conv_ctx))
+                latency = (time.perf_counter() - t0) * 1000
+                sources = extract_sources(context)
+                if sources:
+                    with st.expander(f"Sources ({len(sources)})"):
+                        for i, src in enumerate(sources, 1):
+                            render_source_card(src, i)
+                st.caption(f"{latency:.0f}ms · {len(sources)} sources")
+
+            # Persist to memory
+            turn = ConversationTurn(
+                question=resolved_q, answer=answer,
+                sources=[s.source for s in sources],
+                collection=collection,
+            )
+            memory.add_turn(turn)
+            if len(memory.turns) >= memory.summarize_after:
+                memory.compress(backend.complete_raw)
+            st.session_state["chat_history"].append(("assistant", answer, sources))
+
+        except Exception as e:
+            st.error(f"Chat failed: {e}")
+            import traceback, logging as _logging
+            _logging.getLogger(__name__).error(traceback.format_exc())
+            with st.expander("Technical details"):
+                st.code(traceback.format_exc().split("site-packages")[0])
+
     else:
-        # ── Hybrid RAG (default) ──────────────────────────────────────────────
+        # ── Hybrid RAG (default, streaming) ──────────────────────────────────
         st.subheader("Hybrid RAG Answer")
 
-        from core.generation import answer_question, get_backend
+        from core.generation import get_backend, stream_from_context, extract_sources
         from core.retrieval import retrieve
         from core.sufficient_context import check_sufficiency
 
-        with st.spinner("Retrieving and generating…"):
-            try:
-                req = QueryRequest(
+        try:
+            req = QueryRequest(
+                question=question,
+                collection=collection,
+                top_k=top_k,
+                mode=QueryMode.HYBRID,
+            )
+            backend = get_backend()
+
+            from core.generation import make_crag_evaluator
+            generate_fn = backend.complete_raw
+            evaluate_fn = make_crag_evaluator(backend) if settings.use_hybrid_search else None
+            context = retrieve(req, generate_fn=generate_fn, evaluate_fn=evaluate_fn)
+
+            # Sufficiency check
+            if enable_sufficiency:
+                suf = check_sufficiency(
                     question=question,
-                    collection=collection,
-                    top_k=top_k,
-                    mode=QueryMode.HYBRID,
+                    context=context,
+                    llm_fn=backend.complete_raw if enable_self_rating else None,
+                    enable_self_rating=enable_self_rating,
                 )
-                backend = get_backend()
+                render_sufficiency_bar(suf.overall_score)
+                col_a, col_b, col_c = st.columns(3)
+                col_a.metric("Density",  f"{suf.density_score:.2f}")
+                col_b.metric("Coverage", f"{suf.coverage_score:.2f}")
+                col_c.metric("Chunks",   suf.num_chunks)
 
-                # Run retrieval first to check sufficiency
-                from core.generation import make_crag_evaluator
-                generate_fn  = backend.complete_raw
-                evaluate_fn  = make_crag_evaluator(backend) if settings.use_hybrid_search else None
-                context = retrieve(req, generate_fn=generate_fn, evaluate_fn=evaluate_fn)
+                if suf.recommendation == "abstain":
+                    st.error(f"Insufficient context ({suf.overall_score:.0%}): {suf.explanation}")
+                    st.stop()
+                elif suf.recommendation == "web_search":
+                    st.info("Context is limited — consider enabling Web Search Fallback in your .env for broader coverage.")
+                elif suf.recommendation == "retrieve_more":
+                    st.info("Context borderline — answer may be partial. Try increasing top_k or using CoT-RAG mode.")
 
-                # Sufficiency check
-                if enable_sufficiency:
-                    suf = check_sufficiency(
-                        question=question,
-                        context=context,
-                        llm_fn=backend.complete_raw if enable_self_rating else None,
-                        enable_self_rating=enable_self_rating,
-                    )
-                    render_sufficiency_bar(suf.overall_score)
+            # Stream the answer
+            st.markdown("### Answer")
+            t0 = time.perf_counter()
+            answer = st.write_stream(stream_from_context(context))
+            latency_ms = (time.perf_counter() - t0) * 1000
 
-                    col_a, col_b, col_c = st.columns(3)
-                    col_a.metric("Density",  f"{suf.density_score:.2f}")
-                    col_b.metric("Coverage", f"{suf.coverage_score:.2f}")
-                    col_c.metric("Chunks",   suf.num_chunks)
-
-                    if suf.recommendation == "abstain":
-                        st.error(f"Insufficient context ({suf.overall_score:.0%}): {suf.explanation}")
-                        st.stop()
-                    elif suf.recommendation == "web_search":
-                        st.info("Context is limited — consider enabling Web Search Fallback in your .env for broader coverage.")
-                    elif suf.recommendation == "retrieve_more":
-                        st.info("Context borderline — answer may be partial. Try increasing top_k or using CoT-RAG mode.")
-
-                # Full generation
-                response = answer_question(req)
-
-                # Answer
-                st.markdown("### Answer")
-                st.markdown(response.answer)
+            col_dl, _ = st.columns([1, 4])
+            with col_dl:
                 st.download_button(
                     "Download answer",
-                    data=response.answer,
+                    data=answer,
                     file_name="rag_answer.txt",
                     mime="text/plain",
-                    use_container_width=False,
                 )
 
-                # Metrics
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Latency",   f"{response.latency_ms:.0f}ms")
-                m2.metric("Tokens",    response.tokens_used)
-                m3.metric("Sources",   len(response.sources))
-                m4.metric("Cache hit", "Yes" if response.cache_hit else "No")
+            sources = extract_sources(context)
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Latency",  f"{latency_ms:.0f}ms")
+            m2.metric("Sources",  len(sources))
+            m3.metric("Chunks retrieved", len(context.results))
 
-                # Source cards
-                if response.sources:
-                    st.markdown("### Retrieved Sources")
-                    st.caption(
-                        "Each card shows the chunk that contributed to the answer. "
-                        "Higher similarity = stronger relevance signal."
-                    )
-                    for i, src in enumerate(response.sources, 1):
-                        render_source_card(src, i)
+            if sources:
+                st.markdown("### Retrieved Sources")
+                st.caption("Higher similarity = stronger relevance signal.")
+                for i, src in enumerate(sources, 1):
+                    render_source_card(src, i)
 
-            except Exception as e:
-                st.error(f"Query failed: {e}")
-                import traceback, logging as _logging
-                _logging.getLogger(__name__).error(traceback.format_exc())
-                with st.expander("Technical details"):
-                    st.code(traceback.format_exc().split("site-packages")[0])
+        except Exception as e:
+            st.error(f"Query failed: {e}")
+            import traceback, logging as _logging
+            _logging.getLogger(__name__).error(traceback.format_exc())
+            with st.expander("Technical details"):
+                st.code(traceback.format_exc().split("site-packages")[0])
 
 elif run_btn:
     st.warning("Please enter a question.")

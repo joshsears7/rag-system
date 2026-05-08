@@ -29,6 +29,7 @@ import logging
 import sys
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -1689,6 +1690,165 @@ def check_context(
         title=f"[bold]Context Sufficiency[/bold]  [dim]·[/dim]  {'Sufficient' if result.is_sufficient else 'Insufficient'}",
         border_style=reco_color,
     ))
+
+
+# ── Second Brain commands ─────────────────────────────────────────────────────
+
+brain_app = typer.Typer(name="brain", help="Personal Second Brain — capture and query your own knowledge")
+app.add_typer(brain_app)
+
+
+@brain_app.command(name="add-note")
+def brain_add_note(
+    text: Annotated[str, typer.Argument(help="Note text (or use --file to read from a file)")],
+    title: Annotated[str, typer.Option("--title", "-t", help="Note title")] = "",
+    tags: Annotated[Optional[str], typer.Option("--tags", help="Comma-separated tags")] = None,
+) -> None:
+    """Add a quick text note to your Second Brain."""
+    from core.brain import add_note
+    _print_header("Second Brain · Add Note")
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    with console.status("Saving note…"):
+        result = add_note(text, title=title, tags=tag_list)
+    _print_ingest_result(result)
+
+
+@brain_app.command(name="add-file")
+def brain_add_file(
+    path: Annotated[str, typer.Argument(help="File path to ingest (PDF, TXT, MD, DOCX)")],
+    title: Annotated[str, typer.Option("--title", "-t", help="Display title (defaults to filename)")] = "",
+    tags: Annotated[Optional[str], typer.Option("--tags", help="Comma-separated tags")] = None,
+) -> None:
+    """Add a file to your Second Brain."""
+    from core.brain import add_source
+    _print_header("Second Brain · Add File")
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    with console.status(f"Ingesting '{path}'…"):
+        result = add_source(path, tags=tag_list, title=title)
+    _print_ingest_result(result)
+
+
+@brain_app.command(name="add-url")
+def brain_add_url(
+    url: Annotated[str, typer.Argument(help="URL to fetch and ingest")],
+    title: Annotated[str, typer.Option("--title", "-t", help="Display title")] = "",
+    tags: Annotated[Optional[str], typer.Option("--tags", help="Comma-separated tags")] = None,
+) -> None:
+    """Fetch a URL and add it to your Second Brain."""
+    from core.brain import add_source
+    _print_header("Second Brain · Add URL")
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    with console.status(f"Fetching '{url}'…"):
+        result = add_source(url, tags=tag_list, title=title)
+    _print_ingest_result(result)
+
+
+@brain_app.command(name="query")
+def brain_query(
+    question: Annotated[str, typer.Argument(help="Question to ask your Second Brain")],
+    tags: Annotated[Optional[str], typer.Option("--tags", help="Filter by tags (comma-separated)")] = None,
+    days: Annotated[Optional[int], typer.Option("--days", "-d", help="Only search content added in the last N days")] = None,
+    top_k: Annotated[int, typer.Option("--top-k", "-k", help="Chunks to retrieve")] = 6,
+) -> None:
+    """Ask a question across your Second Brain with optional tag/time filters."""
+    from core.brain import query_brain
+    _print_header(f"Second Brain · Query")
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+
+    filters = []
+    if tag_list:
+        filters.append(f"tags: {', '.join(tag_list)}")
+    if days:
+        filters.append(f"last {days} days")
+    if filters:
+        console.print(f"[dim]Filters: {' · '.join(filters)}[/dim]")
+
+    with console.status("Searching your knowledge base…"):
+        response = query_brain(question, tags=tag_list, days=days, top_k=top_k)
+
+    console.print(Panel(response.answer, title="[bold]Answer[/bold]", border_style="cyan"))
+    console.print(
+        f"[dim]Latency: {response.latency_ms:.0f}ms · Tokens: {response.tokens_used} · "
+        f"Sources: {len(response.sources)}[/dim]"
+    )
+    if response.sources:
+        tbl = Table("Source", "Score", "Excerpt", show_header=True, header_style="bold dim")
+        for src in response.sources:
+            tbl.add_row(
+                Path(src.source).name,
+                f"{src.similarity_score:.2f}",
+                src.excerpt[:80] + "…",
+            )
+        console.print(tbl)
+
+
+@brain_app.command(name="sources")
+def brain_sources(
+    tags: Annotated[Optional[str], typer.Option("--tags", help="Filter by tags")] = None,
+    days: Annotated[Optional[int], typer.Option("--days", "-d", help="Show sources added in last N days")] = None,
+) -> None:
+    """List all sources in your Second Brain."""
+    from core.brain import list_sources
+    _print_header("Second Brain · Sources")
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    sources = list_sources(tags=tag_list, days=days, limit=100)
+
+    if not sources:
+        console.print("[yellow]No sources found.[/yellow]")
+        return
+
+    tbl = Table("Type", "Title", "Tags", "Added", show_header=True, header_style="bold dim", show_lines=True)
+    for m in sources:
+        brain_type = m.get("brain_type", "?")
+        title = m.get("brain_title", m.get("source_file", "Unknown"))[:50]
+        tags_str = m.get("brain_tags", "")
+        ts = m.get("brain_ingested_at", 0)
+        dt = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else "—"
+        icon = {"note": "📝", "file": "📄", "url": "🔗"}.get(brain_type, "📌")
+        tbl.add_row(f"{icon} {brain_type}", title, tags_str or "—", dt)
+    console.print(tbl)
+    console.print(f"[dim]{len(sources)} source(s)[/dim]")
+
+
+@brain_app.command(name="tags")
+def brain_tags() -> None:
+    """Show all tags used in your Second Brain and their chunk counts."""
+    from core.brain import get_all_tags
+    _print_header("Second Brain · Tags")
+    tag_counts = get_all_tags()
+    if not tag_counts:
+        console.print("[yellow]No tags found. Add content with --tags to get started.[/yellow]")
+        return
+    tbl = Table("Tag", "Chunks", show_header=True, header_style="bold dim")
+    for tag, count in sorted(tag_counts.items(), key=lambda x: -x[1]):
+        tbl.add_row(f"[cyan]{tag}[/cyan]", str(count))
+    console.print(tbl)
+
+
+@brain_app.command(name="digest")
+def brain_digest(
+    days: Annotated[int, typer.Option("--days", "-d", help="Days to include in digest")] = 1,
+) -> None:
+    """Generate an LLM digest of recent additions to your Second Brain."""
+    from core.brain import daily_digest
+    label = "today" if days == 1 else f"last {days} days"
+    _print_header(f"Second Brain · Digest ({label})")
+    with console.status("Summarizing recent knowledge…"):
+        digest = daily_digest(days=days)
+    console.print(Panel(digest, title=f"[bold]Digest — {label}[/bold]", border_style="green"))
+
+
+@brain_app.command(name="watch")
+def brain_watch(
+    directory: Annotated[str, typer.Argument(help="Directory to watch for new files")],
+    tags: Annotated[Optional[str], typer.Option("--tags", help="Tags to apply to auto-ingested files")] = None,
+) -> None:
+    """Watch a folder and auto-ingest any new files into your Second Brain."""
+    from core.brain import watch_folder
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    _print_header(f"Second Brain · Watching '{directory}'")
+    console.print(f"[dim]Auto-ingest enabled. Tags: {tag_list or 'none'}. Press Ctrl+C to stop.[/dim]")
+    watch_folder(directory, tags=tag_list)
 
 
 if __name__ == "__main__":

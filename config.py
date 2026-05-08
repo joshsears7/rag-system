@@ -173,6 +173,10 @@ class Settings(BaseSettings):
         description="Use Microsoft Presidio for ML-based PII detection (requires: pip install presidio-analyzer)",
     )
 
+    # ── Second Brain ──────────────────────────────────────────────────────────
+    brain_collection: str = Field(default="second_brain", description="ChromaDB collection name for the Second Brain")
+    brain_watch_dir: Path | None = Field(default=None, description="Directory to watch for auto-ingest (optional)")
+
     # ── GraphRAG Community Detection (Microsoft style) ────────────────────────
     graphrag_community_detection: bool = Field(
         default=False,
